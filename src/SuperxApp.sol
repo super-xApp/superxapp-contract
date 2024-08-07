@@ -6,12 +6,14 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {OwnerIsCreator} from "@chainlink/contracts-ccip/src/v0.8/shared/access/OwnerIsCreator.sol";
 import {CCIPReceiver} from "@chainlink/contracts-ccip/src/v0.8/ccip/applications/CCIPReceiver.sol";
 import {Client} from "@chainlink/contracts-ccip/src/v0.8/ccip/libraries/Client.sol";
+import {IRouterClient} from "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IRouterClient.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /// @title SuperxApp Contract
 /// @author Favour Aniogor (@SuperDevFavour).
 /// @notice This contract implements cross contract interactions regarding transfering, swapping and Staking Tokens.
 /// @dev This contracts implements chainlink CCIP
-contract SuperxApp is OwnerIsCreator, CCIPReceiver {
+contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     //custom type to know what the user has decided to pay fees in
@@ -21,7 +23,10 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver {
     }
 
     // Custom errors to provide more descriptive revert messages.
-    error NotEnoughBalance(uint256 currentBalance, uint256 calculatedFees); // Used to make sure contract has enough balance to cover the fees.
+    error NotEnoughBalanceForFees(
+        uint256 currentBalance,
+        uint256 calculatedFees
+    ); // Used to make sure contract has enough balance to cover the fees.
     error NothingToWithdraw(); // Used when trying to withdraw Ether but there's nothing to withdraw.
     error FailedToWithdrawEth(address owner, address target, uint256 value); // Used when the withdrawal of Ether fails.
     error DestinationChainNotAllowed(uint64 destinationChainSelector); // Used when the destination chain has not been allowlisted by the contract owner.
@@ -153,7 +158,39 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver {
         onlyAllowlistedDestinationChain(_destinationChainSelector)
         validateReceiver(_receiver)
         returns (bytes32 messageId)
-    {}
+    {
+        Client.EVM2AnyMessage memory message = _buildCCIPMessage(
+            _receiver,
+            _to,
+            _token,
+            _amount,
+            payFeesIn == PayFeesIn.LINK ? address(i_linkToken) : address(0)
+        );
+
+        IRouterClient router = IRouterClient(this.getRouter());
+
+        uint256 fees = router.getFee(_destinationChainSelector, evm2AnyMessage);
+
+        if (payFeesIn == PayFeesIn.LINK) {
+            if (fees > i_linkToken.balanceOf(address(this)))
+                revert NotEnoughBalanceForFees(
+                    i_linkToken.balanceOf(address(this)),
+                    fees
+                );
+
+            i_linkToken.approve(address(router), fees);
+
+            messageId = router.ccipSend(_destinationChainSelector, message);
+        } else {
+            if (fees > address(this).balance)
+                revert NotEnoughBalanceForFees(address(this).balance, fees);
+
+            messageId = router.ccipSend{value: fees}(
+                _destinationChainSelector,
+                message
+            );
+        }
+    }
 
     ////////////////
     // Internals //
