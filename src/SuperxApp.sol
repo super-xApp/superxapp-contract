@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {OwnerIsCreator} from "@chainlink/contracts-ccip/src/v0.8/shared/access/OwnerIsCreator.sol";
 
 /// @title SuperxApp Contract
 /// @author Favour Aniogor (@SuperDevFavour).
@@ -25,8 +26,18 @@ contract SuperxApp {
     error SourceChainNotAllowed(uint64 sourceChainSelector); // Used when the source chain has not been allowlisted by the contract owner.
     error SenderNotAllowed(address sender); // Used when the sender has not been allowlisted by the contract owner.
     error InvalidReceiverAddress(); // Used when the receiver address is 0.
+    error InvalidRouter(address _router); // Used when the sender passes in a zero address when deploying.
 
-    // State Variables
+    //////////////////////
+    // State Variables //
+    ////////////////////
+
+    // Interface for the LINK token contract
+    IERC20 internal immutable i_linkToken;
+
+    // storing the current chain ChainSelector
+    uint64 private immutable i_currentChainSelector;
+
     // Mapping to keep track of allowlisted destination chains.
     mapping(uint64 => bool) public allowlistedDestinationChains;
 
@@ -35,4 +46,17 @@ contract SuperxApp {
 
     // Mapping to keep track of allowlisted senders.
     mapping(address => bool) public allowlistedSenders;
+
+    //////////////////
+    // Constructor //
+    ////////////////
+
+    /// @notice Constructor initializes the contract with the router address.
+    /// @param _router The address of the router contract.
+    /// @param _link The address of the link contract.
+    constructor(address _router, address _link, uint64 _chainSelector) {
+        if (_router == address(0)) revert InvalidRouter(_router);
+        i_linkToken = IERC20(_link);
+        i_currentChainSelector = _chainSelector;
+    }
 }
