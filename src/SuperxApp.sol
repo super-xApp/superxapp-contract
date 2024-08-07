@@ -7,7 +7,7 @@ import {OwnerIsCreator} from "@chainlink/contracts-ccip/src/v0.8/shared/access/O
 import {CCIPReceiver} from "@chainlink/contracts-ccip/src/v0.8/ccip/applications/CCIPReceiver.sol";
 import {Client} from "@chainlink/contracts-ccip/src/v0.8/ccip/libraries/Client.sol";
 import {IRouterClient} from "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IRouterClient.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /// @title SuperxApp Contract
 /// @author Favour Aniogor (@SuperDevFavour).
@@ -84,15 +84,12 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
         _;
     }
 
-    /// @dev Updates the allowlist status of a destination chain for transactions.
-    /// @notice This function can only be called by the owner.
-    /// @param _destinationChainSelector The selector of the destination chain to be updated.
-    /// @param allowed The allowlist status to be set for the destination chain.
-    function allowlistDestinationChain(
-        uint64 _destinationChainSelector,
-        bool allowed
-    ) external onlyOwner {
-        allowlistedDestinationChains[_destinationChainSelector] = allowed;
+    /// @dev Modifier that checks if the chain with the given destinationChainSelector is allowlisted.
+    /// @param _destinationChainSelector The selector of the destination chain.
+    modifier onlyAllowlistedDestinationChain(uint64 _destinationChainSelector) {
+        if (!allowlistedDestinationChains[_destinationChainSelector])
+            revert DestinationChainNotAllowed(_destinationChainSelector);
+        _;
     }
 
     /// @dev Modifier that checks the receiver address is not 0.
@@ -152,7 +149,8 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
         address _receiver,
         address _to,
         address _token,
-        uint256 _amount
+        uint256 _amount,
+        PayFeesIn _payFeesIn
     )
         external
         onlyAllowlistedDestinationChain(_destinationChainSelector)
@@ -164,14 +162,14 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
             _to,
             _token,
             _amount,
-            payFeesIn == PayFeesIn.LINK ? address(i_linkToken) : address(0)
+            _payFeesIn == PayFeesIn.LINK ? address(i_linkToken) : address(0)
         );
 
         IRouterClient router = IRouterClient(this.getRouter());
 
-        uint256 fees = router.getFee(_destinationChainSelector, evm2AnyMessage);
+        uint256 fees = router.getFee(_destinationChainSelector, message);
 
-        if (payFeesIn == PayFeesIn.LINK) {
+        if (_payFeesIn == PayFeesIn.LINK) {
             if (fees > i_linkToken.balanceOf(address(this)))
                 revert NotEnoughBalanceForFees(
                     i_linkToken.balanceOf(address(this)),
@@ -206,4 +204,42 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
             abi.decode(_message.sender, (address))
         )
     {}
+
+    ///////////////
+    // Privates //
+    /////////////
+
+    /// @notice Construct a CCIP message.
+    /// @dev This function will create an EVM2AnyMessage struct with all the necessary information for programmable tokens transfer.
+    /// @param _receiver The address of the receiver.
+    /// @param _to The address to be paid on the recipient chain.
+    /// @param _token The token to be transferred.
+    /// @param _amount The amount of the token to be transferred.
+    /// @param _feeTokenAddress The address of the token used for fees. Set address(0) for native gas.
+    /// @return Client.EVM2AnyMessage Returns an EVM2AnyMessage struct which contains information for sending a CCIP message.
+    function _buildCCIPMessage(
+        address _receiver,
+        address _to,
+        address _token,
+        uint256 _amount,
+        address _feeTokenAddress
+    ) private pure returns (Client.EVM2AnyMessage memory) {
+        Client.EVMTokenAmount[]
+            memory tokenAmounts = new Client.EVMTokenAmount[](1);
+        tokenAmounts[0] = Client.EVMTokenAmount({
+            token: _token,
+            amount: _amount
+        });
+
+        return
+            Client.EVM2AnyMessage({
+                receiver: abi.encode(_receiver),
+                data: abi.encode(_to),
+                tokenAmounts: tokenAmounts,
+                extraArgs: Client._argsToBytes(
+                    Client.EVMExtraArgsV1({gasLimit: 200_000})
+                ),
+                feeToken: _feeTokenAddress
+            });
+    }
 }
