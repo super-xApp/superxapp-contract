@@ -4,12 +4,14 @@ pragma solidity ^0.8.20;
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {OwnerIsCreator} from "@chainlink/contracts-ccip/src/v0.8/shared/access/OwnerIsCreator.sol";
+import {CCIPReceiver} from "@chainlink/contracts-ccip/src/v0.8/ccip/applications/CCIPReceiver.sol";
+import {Client} from "@chainlink/contracts-ccip/src/v0.8/ccip/libraries/Client.sol";
 
 /// @title SuperxApp Contract
 /// @author Favour Aniogor (@SuperDevFavour).
 /// @notice This contract implements cross contract interactions regarding transfering, swapping and Staking Tokens.
 /// @dev This contracts implements chainlink CCIP
-contract SuperxApp is OwnerIsCreator {
+contract SuperxApp is OwnerIsCreator, CCIPReceiver {
     using SafeERC20 for IERC20;
 
     //custom type to know what the user has decided to pay fees in
@@ -26,7 +28,6 @@ contract SuperxApp is OwnerIsCreator {
     error SourceChainNotAllowed(uint64 sourceChainSelector); // Used when the source chain has not been allowlisted by the contract owner.
     error SenderNotAllowed(address sender); // Used when the sender has not been allowlisted by the contract owner.
     error InvalidReceiverAddress(); // Used when the receiver address is 0.
-    error InvalidRouter(address _router); // Used when the sender passes in a zero address when deploying.
 
     //////////////////////
     // State Variables //
@@ -54,10 +55,28 @@ contract SuperxApp is OwnerIsCreator {
     /// @notice Constructor initializes the contract with the router address.
     /// @param _router The address of the router contract.
     /// @param _link The address of the link contract.
-    constructor(address _router, address _link, uint64 _chainSelector) {
+    constructor(
+        address _router,
+        address _link,
+        uint64 _chainSelector
+    ) CCIPReceiver(_router) {
         if (_router == address(0)) revert InvalidRouter(_router);
         i_linkToken = IERC20(_link);
         i_currentChainSelector = _chainSelector;
+    }
+
+    ////////////////
+    // Modifiers //
+    //////////////
+
+    /// @dev Modifier that checks if the chain with the given sourceChainSelector is allowlisted and if the sender is allowlisted.
+    /// @param _sourceChainSelector The selector of the destination chain.
+    /// @param _sender The address of the sender.
+    modifier onlyAllowlisted(uint64 _sourceChainSelector, address _sender) {
+        if (!allowlistedSourceChains[_sourceChainSelector])
+            revert SourceChainNotAllowed(_sourceChainSelector);
+        if (!allowlistedSenders[_sender]) revert SenderNotAllowed(_sender);
+        _;
     }
 
     ////////////////
@@ -67,30 +86,48 @@ contract SuperxApp is OwnerIsCreator {
     /// @dev Updates the allowlist status of a destination chain for transactions.
     /// @notice This function can only be called by the owner.
     /// @param _destinationChainSelector The selector of the destination chain to be updated.
-    /// @param allowed The allowlist status to be set for the destination chain.
+    /// @param _allowed The allowlist status to be set for the destination chain.
     function allowlistDestinationChain(
         uint64 _destinationChainSelector,
-        bool allowed
+        bool _allowed
     ) external onlyOwner {
-        allowlistedDestinationChains[_destinationChainSelector] = allowed;
+        allowlistedDestinationChains[_destinationChainSelector] = _allowed;
     }
 
     /// @dev Updates the allowlist status of a source chain
     /// @notice This function can only be called by the owner.
     /// @param _sourceChainSelector The selector of the source chain to be updated.
-    /// @param allowed The allowlist status to be set for the source chain.
+    /// @param _allowed The allowlist status to be set for the source chain.
     function allowlistSourceChain(
         uint64 _sourceChainSelector,
-        bool allowed
+        bool _allowed
     ) external onlyOwner {
-        allowlistedSourceChains[_sourceChainSelector] = allowed;
+        allowlistedSourceChains[_sourceChainSelector] = _allowed;
     }
 
     /// @dev Updates the allowlist status of a sender for transactions.
     /// @notice This function can only be called by the owner.
     /// @param _sender The address of the sender to be updated.
-    /// @param allowed The allowlist status to be set for the sender.
-    function allowlistSender(address _sender, bool allowed) external onlyOwner {
-        allowlistedSenders[_sender] = allowed;
+    /// @param _allowed The allowlist status to be set for the sender.
+    function allowlistSender(
+        address _sender,
+        bool _allowed
+    ) external onlyOwner {
+        allowlistedSenders[_sender] = _allowed;
     }
+
+    ////////////////
+    // Internals //
+    //////////////
+
+    function _ccipReceive(
+        Client.Any2EVMMessage memory _message
+    )
+        internal
+        override
+        onlyAllowlisted(
+            _message.sourceChainSelector,
+            abi.decode(_message.sender, (address))
+        )
+    {}
 }
