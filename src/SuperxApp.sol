@@ -74,4 +74,15 @@ contract SuperxApp is OwnerIsCreator {
     ) external onlyOwner {
         allowlistedDestinationChains[_destinationChainSelector] = allowed;
     }
+
+    /// @dev Updates the allowlist status of a source chain
+    /// @notice This function can only be called by the owner.
+    /// @param _sourceChainSelector The selector of the source chain to be updated.
+    /// @param allowed The allowlist status to be set for the source chain.
+    function allowlistSourceChain(
+        uint64 _sourceChainSelector,
+        bool allowed
+    ) external onlyOwner {
+        allowlistedSourceChains[_sourceChainSelector] = allowed;
+    }
 }
