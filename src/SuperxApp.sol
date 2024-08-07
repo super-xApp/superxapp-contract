@@ -79,6 +79,24 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver {
         _;
     }
 
+    /// @dev Updates the allowlist status of a destination chain for transactions.
+    /// @notice This function can only be called by the owner.
+    /// @param _destinationChainSelector The selector of the destination chain to be updated.
+    /// @param allowed The allowlist status to be set for the destination chain.
+    function allowlistDestinationChain(
+        uint64 _destinationChainSelector,
+        bool allowed
+    ) external onlyOwner {
+        allowlistedDestinationChains[_destinationChainSelector] = allowed;
+    }
+
+    /// @dev Modifier that checks the receiver address is not 0.
+    /// @param _receiver The receiver address.
+    modifier validateReceiver(address _receiver) {
+        if (_receiver == address(0)) revert InvalidReceiverAddress();
+        _;
+    }
+
     ////////////////
     // Externals //
     //////////////
@@ -115,6 +133,27 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver {
     ) external onlyOwner {
         allowlistedSenders[_sender] = _allowed;
     }
+
+    /// @notice Transfer tokens to receiver on the destination chain.
+    /// @notice Pay for fees in LINK/ETH.
+    /// @param _destinationChainSelector The identifier (aka selector) for the destination blockchain.
+    /// @param _receiver The address of the recipient on the destination blockchain.
+    /// @param _to The address to be paid on the recipient chain.
+    /// @param _token token address.
+    /// @param _amount token amount.
+    /// @return messageId The ID of the CCIP message that was sent.
+    function sendToken(
+        uint64 _destinationChainSelector,
+        address _receiver,
+        address _to,
+        address _token,
+        uint256 _amount
+    )
+        external
+        onlyAllowlistedDestinationChain(_destinationChainSelector)
+        validateReceiver(_receiver)
+        returns (bytes32 messageId)
+    {}
 
     ////////////////
     // Internals //
