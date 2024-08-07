@@ -213,10 +213,16 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
 
             i_linkToken.approve(address(router), fees);
 
+            IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
+            IERC20(_token).approve(address(router), _amount);
+
             messageId = router.ccipSend(_destinationChainSelector, message);
         } else {
             if (fees > address(this).balance)
                 revert NotEnoughBalanceForFees(address(this).balance, fees);
+
+            IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
+            IERC20(_token).approve(address(router), _amount);
 
             messageId = router.ccipSend{value: fees}(
                 _destinationChainSelector,
