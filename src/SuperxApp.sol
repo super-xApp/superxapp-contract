@@ -85,4 +85,12 @@ contract SuperxApp is OwnerIsCreator {
     ) external onlyOwner {
         allowlistedSourceChains[_sourceChainSelector] = allowed;
     }
+
+    /// @dev Updates the allowlist status of a sender for transactions.
+    /// @notice This function can only be called by the owner.
+    /// @param _sender The address of the sender to be updated.
+    /// @param allowed The allowlist status to be set for the sender.
+    function allowlistSender(address _sender, bool allowed) external onlyOwner {
+        allowlistedSenders[_sender] = allowed;
+    }
 }
