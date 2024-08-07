@@ -9,7 +9,7 @@ import {OwnerIsCreator} from "@chainlink/contracts-ccip/src/v0.8/shared/access/O
 /// @author Favour Aniogor (@SuperDevFavour).
 /// @notice This contract implements cross contract interactions regarding transfering, swapping and Staking Tokens.
 /// @dev This contracts implements chainlink CCIP
-contract SuperxApp {
+contract SuperxApp is OwnerIsCreator {
     using SafeERC20 for IERC20;
 
     //custom type to know what the user has decided to pay fees in
@@ -58,5 +58,20 @@ contract SuperxApp {
         if (_router == address(0)) revert InvalidRouter(_router);
         i_linkToken = IERC20(_link);
         i_currentChainSelector = _chainSelector;
+    }
+
+    ////////////////
+    // Externals //
+    //////////////
+
+    /// @dev Updates the allowlist status of a destination chain for transactions.
+    /// @notice This function can only be called by the owner.
+    /// @param _destinationChainSelector The selector of the destination chain to be updated.
+    /// @param allowed The allowlist status to be set for the destination chain.
+    function allowlistDestinationChain(
+        uint64 _destinationChainSelector,
+        bool allowed
+    ) external onlyOwner {
+        allowlistedDestinationChains[_destinationChainSelector] = allowed;
     }
 }
