@@ -16,11 +16,19 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
+    ////////////
+    // ENUMS //
+    //////////
+
     //custom type to know what the user has decided to pay fees in
     enum PayFeesIn {
         Native,
         LINK
     }
+
+    /////////////
+    // ERRORS //
+    ///////////
 
     // Custom errors to provide more descriptive revert messages.
     error NotEnoughBalanceForFees(
@@ -232,6 +240,10 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
     // Internals //
     //////////////
 
+    /// @notice handle a received message
+    /// @dev inherited from the CCIPReceiver
+    /// @param _message the message recieved
+    /// @inheritdoc	CCIPReceiver.sol
     function _ccipReceive(
         Client.Any2EVMMessage memory _message
     )
