@@ -53,6 +53,32 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
     // Mapping to keep track of allowlisted senders.
     mapping(address => bool) public allowlistedSenders;
 
+    /////////////
+    // Events //
+    ///////////
+
+    // Event emitted when a message is sent to another chain.
+    event TokenSent(
+        bytes32 indexed _messageId, // The unique ID of the CCIP message.
+        uint64 indexed _destinationChainSelector, // The chain selector of the destination chain.
+        address indexed _sender, // The address of the sender.
+        address _to, // The address of the receiver.
+        address _token, // The token address that was transferred.
+        uint256 _tokenAmount, // The token amount that was transferred.
+        address _feeToken, // the token address used to pay CCIP fees.
+        uint256 _fees // The fees paid for sending the message.
+    );
+
+    // Event emitted when a message is received from another chain.
+    event TokenReceived(
+        bytes32 indexed _messageId, // The unique ID of the CCIP message.
+        uint64 indexed _sourceChainSelector, // The chain selector of the source chain.
+        address _sender, // The address of the sender from the source chain.
+        address indexed _to, // The address of the reciever.
+        address token, // The token address that was transferred.
+        uint256 tokenAmount // The token amount that was transferred.
+    );
+
     //////////////////
     // Constructor //
     ////////////////
@@ -159,6 +185,7 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
     {
         Client.EVM2AnyMessage memory message = _buildCCIPMessage(
             _receiver,
+            msg.sender,
             _to,
             _token,
             _amount,
@@ -188,6 +215,17 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
                 message
             );
         }
+
+        emit TokenSent(
+            messageId,
+            _destinationChainSelector,
+            msg.sender,
+            _to,
+            _token,
+            _amount,
+            _payFeesIn == PayFeesIn.LINK ? address(i_linkToken) : address(0),
+            fees
+        );
     }
 
     ////////////////
@@ -203,7 +241,27 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
             _message.sourceChainSelector,
             abi.decode(_message.sender, (address))
         )
-    {}
+    {
+        bytes32 messageId = _message.messageId;
+        uint64 sourceChainSelector = _message.sourceChainSelector;
+        (address to, address from) = abi.decode(
+            _message.data,
+            (address, address)
+        );
+        address token = _message.destTokenAmounts[0].token;
+        uint256 tokenAmount = _message.destTokenAmounts[0].amount;
+
+        IERC20(token).transfer(to, tokenAmount);
+
+        emit TokenReceived(
+            messageId,
+            sourceChainSelector,
+            from,
+            to,
+            token,
+            tokenAmount
+        );
+    }
 
     ///////////////
     // Privates //
@@ -212,6 +270,7 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
     /// @notice Construct a CCIP message.
     /// @dev This function will create an EVM2AnyMessage struct with all the necessary information for programmable tokens transfer.
     /// @param _receiver The address of the receiver.
+    /// @param _from The address to be paid on the recipient chain.
     /// @param _to The address to be paid on the recipient chain.
     /// @param _token The token to be transferred.
     /// @param _amount The amount of the token to be transferred.
@@ -219,6 +278,7 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
     /// @return Client.EVM2AnyMessage Returns an EVM2AnyMessage struct which contains information for sending a CCIP message.
     function _buildCCIPMessage(
         address _receiver,
+        address _from,
         address _to,
         address _token,
         uint256 _amount,
@@ -234,7 +294,7 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
         return
             Client.EVM2AnyMessage({
                 receiver: abi.encode(_receiver),
-                data: abi.encode(_to),
+                data: abi.encode(_to, _from),
                 tokenAmounts: tokenAmounts,
                 extraArgs: Client._argsToBytes(
                     Client.EVMExtraArgsV1({gasLimit: 200_000})
