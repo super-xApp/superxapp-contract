@@ -249,7 +249,7 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
     /// @notice handle a received message
     /// @dev inherited from the CCIPReceiver
     /// @param _message the message recieved
-    /// @inheritdoc	CCIPReceiver.sol
+    /// @inheritdoc	CCIPReceiver
     function _ccipReceive(
         Client.Any2EVMMessage memory _message
     )
