@@ -9,6 +9,8 @@ import {IRouterClient} from "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {EnumerableMap} from "@chainlink/contracts-ccip/src/v0.8/vendor/openzeppelin-solidity/v4.8.3/contracts/utils/structs/EnumerableMap.sol";
 import "@pythnetwork/pyth-sdk-solidity/IPyth.sol";
+import "@pythnetwork/pyth-sdk-solidity/PythStructs.sol";
+import "@pythnetwork/pyth-sdk-solidity/PythUtils.sol";
 
 /// @title SuperxOracle Contract
 /// @author Favour Aniogor (@SuperDevFavour).
@@ -61,5 +63,50 @@ contract SuperxOracle {
                 s_priceFeeds[_tokens[i]] = _pricefeed[i];
             }
         }
+    }
+
+    ////////////////
+    // Externals //
+    //////////////
+
+    function swap(
+        address _baseToken,
+        address _quoteToken,
+        uint256 _amount,
+        bytes[] calldata _pythUpdateData
+    ) external payable {
+        // TODO: check if token is supported
+
+        uint256 updateFee = i_pyth.getUpdateFee(_pythUpdateData);
+        i_pyth.updatePriceFeeds{value: updateFee}(_pythUpdateData);
+
+        PythStructs.Price memory currentBasePrice = i_pyth.getPrice(
+            s_priceFeeds[_baseToken]
+        );
+        PythStructs.Price memory currentQuotePrice = i_pyth.getPrice(
+            s_priceFeeds[_quoteToken]
+        );
+
+        uint256 basePrice = PythUtils.convertToUint(
+            currentBasePrice.price,
+            currentBasePrice.expo,
+            18
+        );
+        uint256 quotePrice = PythUtils.convertToUint(
+            currentQuotePrice.price,
+            currentQuotePrice.expo,
+            18
+        );
+
+        // This computation loses precision. The infinite-precision result is between [quoteSize, quoteSize + 1]
+        uint256 quoteSize = (_amount * basePrice) / quotePrice;
+
+        // TODO: check if the contract has enough
+        // TODO: check for native token
+
+        IERC20(_baseToken).transferFrom(msg.sender, address(this), _amount);
+        IERC20(_quoteToken).transfer(msg.sender, quoteSize);
+
+        //TODO: Emit a message when successfully transfer
     }
 }
