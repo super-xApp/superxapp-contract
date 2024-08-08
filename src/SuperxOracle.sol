@@ -21,6 +21,7 @@ contract SuperxOracle {
     // ERRORs //
     ///////////
     error PriceFeedAndTokensLengthNotEqual();
+    error TokenNotSwappable(address _baseToken, address _quoteToken);
 
     //////////////////////
     // State Variables //
@@ -66,6 +67,16 @@ contract SuperxOracle {
     }
 
     ////////////////
+    // Modifiers //
+    //////////////
+    modifier onlySwappableToken(address _baseToken, address _quoteToken) {
+        if (!s_isSwappable[_baseToken] || !s_isSwappable[_quoteToken]) {
+            revert TokenNotSwappable(_baseToken, _quoteToken);
+        }
+        _;
+    }
+
+    ////////////////
     // Externals //
     //////////////
 
@@ -74,9 +85,7 @@ contract SuperxOracle {
         address _quoteToken,
         uint256 _amount,
         bytes[] calldata _pythUpdateData
-    ) external payable {
-        // TODO: check if token is supported
-
+    ) external payable onlySwappableToken(_baseToken, _quoteToken) {
         uint256 updateFee = i_pyth.getUpdateFee(_pythUpdateData);
         i_pyth.updatePriceFeeds{value: updateFee}(_pythUpdateData);
 
