@@ -8,6 +8,7 @@ import {CCIPReceiver} from "@chainlink/contracts-ccip/src/v0.8/ccip/applications
 import {Client} from "@chainlink/contracts-ccip/src/v0.8/ccip/libraries/Client.sol";
 import {IRouterClient} from "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IRouterClient.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {EnumerableMap} from "@chainlink/contracts-ccip/src/v0.8/vendor/openzeppelin-solidity/v4.8.3/contracts/utils/structs/EnumerableMap.sol";
 
 /// @title SuperxApp Contract
 /// @author Favour Aniogor (@SuperDevFavour).
@@ -15,6 +16,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 /// @dev This contracts implements chainlink CCIP
 contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
     using SafeERC20 for IERC20;
+    using EnumerableMap for EnumerableMap.Bytes32ToUintMap;
 
     ////////////
     // ENUMS //
@@ -24,6 +26,14 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
     enum PayFeesIn {
         Native,
         LINK
+    }
+
+    // Example error code, could have many different error codes.
+    enum ErrorCode {
+        // RESOLVED is first so that the default value is resolved.
+        RESOLVED,
+        // Could have any number of error codes here.
+        FAILED
     }
 
     /////////////
@@ -41,6 +51,7 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
     error SourceChainNotAllowed(uint64 sourceChainSelector); // Used when the source chain has not been allowlisted by the contract owner.
     error SenderNotAllowed(address sender); // Used when the sender has not been allowlisted by the contract owner.
     error InvalidReceiverAddress(); // Used when the receiver address is 0.
+    error OnlySelf(); // Used when a function is called outside of the contract itself.
 
     //////////////////////
     // State Variables //
@@ -60,6 +71,13 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
 
     // Mapping to keep track of allowlisted senders.
     mapping(address => bool) public allowlistedSenders;
+
+    // The message contents of failed messages are stored here.
+    mapping(bytes32 messageId => Client.Any2EVMMessage contents)
+        public s_messageContents;
+
+    // Contains failed messages and their state.
+    EnumerableMap.Bytes32ToUintMap internal s_failedMessages;
 
     /////////////
     // Events //
@@ -86,6 +104,9 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
         address token, // The token address that was transferred.
         uint256 tokenAmount // The token amount that was transferred.
     );
+
+    // Event emitted when token transfer failed
+    event TokenTransferFailed(bytes32 indexed messageId, bytes reason);
 
     //////////////////
     // Constructor //
@@ -130,6 +151,13 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
     /// @param _receiver The receiver address.
     modifier validateReceiver(address _receiver) {
         if (_receiver == address(0)) revert InvalidReceiverAddress();
+        _;
+    }
+
+    /// @dev Modifier to allow only the contract itself to execute a function.
+    /// Throws an exception if called by any account other than the contract itself.
+    modifier onlySelf() {
+        if (msg.sender != address(this)) revert OnlySelf();
         _;
     }
 
@@ -187,6 +215,7 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
         PayFeesIn _payFeesIn
     )
         external
+        payable
         onlyAllowlistedDestinationChain(_destinationChainSelector)
         validateReceiver(_receiver)
         returns (bytes32 messageId)
@@ -242,6 +271,55 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
         );
     }
 
+    /// @notice The entrypoint for the CCIP router to call. This function should
+    /// never revert, all errors should be handled internally in this contract.
+    /// @param _message The message to process.
+    /// @dev Extremely important to ensure only router calls this.
+    function ccipReceive(
+        Client.Any2EVMMessage calldata _message
+    )
+        external
+        override
+        onlyRouter
+        onlyAllowlisted(
+            _message.sourceChainSelector,
+            abi.decode(_message.sender, (address))
+        ) // Make sure the source chain and sender are allowlisted
+    {
+        /* solhint-disable no-empty-blocks */
+        try this.processMessage(_message) {
+            // Intentionally empty in this example; no action needed if processMessage succeeds
+        } catch (bytes memory err) {
+            // Could set different error codes based on the caught error. Each could be
+            // handled differently.
+            s_failedMessages.set(_message.messageId, uint256(ErrorCode.FAILED));
+            s_messageContents[_message.messageId] = _message;
+            // Don't revert so CCIP doesn't revert. Emit event instead.
+            // The message can be retried later without having to do manual execution of CCIP.
+            emit TokenTransferFailed(_message.messageId, err);
+            return;
+        }
+    }
+
+    /// @notice Serves as the entry point for this contract to process incoming messages.
+    /// @param _message Received CCIP message.
+    /// @dev Transfers specified token amounts to the owner of this contract. This function
+    /// must be external because of the  try/catch for error handling.
+    /// It uses the `onlySelf`: can only be called from the contract.
+    function processMessage(
+        Client.Any2EVMMessage calldata _message
+    )
+        external
+        onlySelf
+        onlyAllowlisted(
+            _message.sourceChainSelector,
+            abi.decode(_message.sender, (address))
+        ) // Make sure the source chain and sender are allowlisted
+    {
+        _ccipReceive(_message); // process the message
+    }
+    receive() external payable {}
+
     ////////////////
     // Internals //
     //////////////
@@ -269,7 +347,7 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
         address token = _message.destTokenAmounts[0].token;
         uint256 tokenAmount = _message.destTokenAmounts[0].amount;
 
-        IERC20(token).transfer(to, tokenAmount);
+        // IERC20(token).transfer(to, tokenAmount);
 
         emit TokenReceived(
             messageId,
@@ -305,7 +383,7 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
         Client.EVMTokenAmount[]
             memory tokenAmounts = new Client.EVMTokenAmount[](1);
         tokenAmounts[0] = Client.EVMTokenAmount({
-            token: _token,
+            token: address(_token),
             amount: _amount
         });
 
@@ -315,7 +393,7 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
                 data: abi.encode(_to, _from),
                 tokenAmounts: tokenAmounts,
                 extraArgs: Client._argsToBytes(
-                    Client.EVMExtraArgsV1({gasLimit: 200_000})
+                    Client.EVMExtraArgsV1({gasLimit: 300_000})
                 ),
                 feeToken: _feeTokenAddress
             });
