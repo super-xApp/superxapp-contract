@@ -119,14 +119,11 @@ contract SuperxAppTest is Test {
         vm.stopPrank();
 
         ccipLocalSimulatorFork.switchChainAndRouteMessage(arbSepoliaFork); // THIS LINE REPLACES CHAINLINK CCIP DONs, DO NOT FORGET IT
-        ccipLocalSimulatorFork.switchChainAndRouteMessage(ethSepoliaFork);
-        assertEq(vm.activeFork(), ethSepoliaFork);
+        assertEq(vm.activeFork(), arbSepoliaFork);
 
         assertEq(
-            IERC20(0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238).balanceOf(
-                0x4a3aF8C69ceE81182A9E74b2392d4bDc616Bf7c7
-            ),
-            9
+            IERC20(0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d).balanceOf(bob),
+            1000000
         );
     }
 }

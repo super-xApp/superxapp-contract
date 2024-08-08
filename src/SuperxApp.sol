@@ -347,7 +347,7 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
         address token = _message.destTokenAmounts[0].token;
         uint256 tokenAmount = _message.destTokenAmounts[0].amount;
 
-        // IERC20(token).transfer(to, tokenAmount);
+        IERC20(token).safeTransfer(to, tokenAmount);
 
         emit TokenReceived(
             messageId,
