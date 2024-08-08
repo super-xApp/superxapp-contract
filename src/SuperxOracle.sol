@@ -22,6 +22,7 @@ contract SuperxOracle {
     ///////////
     error PriceFeedAndTokensLengthNotEqual();
     error TokenNotSwappable(address _baseToken, address _quoteToken);
+    error AmountOutOfBounds();
 
     //////////////////////
     // State Variables //
@@ -29,6 +30,10 @@ contract SuperxOracle {
 
     // The Pyth Contract
     IPyth immutable i_pyth;
+
+    // This amount of percent that can be swapped from the contract balance at a time.
+    // NOTE: This is just for the testnet and not going to be part of the mainnet code.
+    uint8 private s_quotePercent = 20;
 
     // maps token address that can be swappable to a boolean value
     mapping(address => bool) public s_isSwappable;
@@ -110,12 +115,28 @@ contract SuperxOracle {
         // This computation loses precision. The infinite-precision result is between [quoteSize, quoteSize + 1]
         uint256 quoteSize = (_amount * basePrice) / quotePrice;
 
-        // TODO: check if the contract has enough
+        if (!_notLargerThanPercent(_quoteToken, quoteSize))
+            revert AmountOutOfBounds();
         // TODO: check for native token
 
         IERC20(_baseToken).transferFrom(msg.sender, address(this), _amount);
         IERC20(_quoteToken).transfer(msg.sender, quoteSize);
 
         //TODO: Emit a message when successfully transfer
+    }
+
+    /// @notice This function checks if the amount of token to be swapped is <= the s_qoutePercent * the contract balance
+    /// @param _token the address of the token the contract is sending.
+    /// @param _amount the quantity of the token the user will get.
+    function _notLargerThanPercent(
+        address _token,
+        uint256 _amount
+    ) internal view returns (bool) {
+        uint256 percentAmount = s_quotePercent *
+            (IERC20(_token).balanceOf(address(this)) / 100);
+        if (_amount > percentAmount) {
+            return false;
+        }
+        return true;
     }
 }
