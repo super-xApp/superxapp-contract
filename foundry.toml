@@ -7,6 +7,7 @@ remappings = [
     '@chainlink/contracts/=lib/chainlink/contracts/',
     '@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/',
     '@chainlink/local/=lib/chainlink-local/',
+    '@pythnetwork/pyth-sdk-solidity/=node_modules/@pythnetwork/pyth-sdk-solidity',
 ]
 
 [rpc_endpoints]
