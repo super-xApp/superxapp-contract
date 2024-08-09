@@ -49,10 +49,30 @@ contract SuperxOracle {
     mapping(address => bool) public s_isSwappable;
 
     // stores the pricefeed for all token pairs e.g eth/usd
-    mapping(address => bytes32) public s_priceFeeds;
+    mapping(address => TokenData) public s_tokenDatas;
 
     // stores the address of all tokens
     address[] public s_tokens;
+
+    /////////////
+    // EVENTs //
+    ///////////
+
+    // Event Emitted when a token is successfully swapped
+    event TokenSwapped(
+        string indexed _from,
+        string indexed _to,
+        uint256 _amount
+    );
+
+    //////////////
+    // STRUCTs //
+    ////////////
+
+    struct TokenData {
+        bytes32 priceFeed;
+        string symbol;
+    }
 
     //////////////////
     // Constructor //
@@ -60,23 +80,23 @@ contract SuperxOracle {
 
     /// @notice Constructor initializes the contract with the pyth address.
     /// @param _pyth The address of the pyth contract.
-    /// @param _pricefeed an array of pricefeeds for the token.
+    /// @param _tokenDatas an array of TokenData struct which contains the pricefeed and symbol.
     /// @param _tokens an array of acceptable swappable tokens.
     constructor(
         address _pyth,
-        bytes32[] memory _pricefeed,
+        TokenData[] memory _tokenDatas,
         address[] memory _tokens
     ) {
         i_pyth = IPyth(_pyth);
 
-        if (_pricefeed.length != _tokens.length) {
+        if (_tokenDatas.length != _tokens.length) {
             revert PriceFeedAndTokensLengthNotEqual();
         }
-        for (uint i = 0; i < _pricefeed.length; i++) {
+        for (uint i = 0; i < _tokenDatas.length; i++) {
             if (_tokens[i] != address(0)) {
                 s_isSwappable[_tokens[i]] = true;
                 s_tokens.push(_tokens[i]);
-                s_priceFeeds[_tokens[i]] = _pricefeed[i];
+                s_tokenDatas[_tokens[i]] = _tokenDatas[i];
             }
         }
     }
@@ -110,10 +130,10 @@ contract SuperxOracle {
         i_pyth.updatePriceFeeds{value: updateFee}(_pythUpdateData);
 
         PythStructs.Price memory currentBasePrice = i_pyth.getPrice(
-            s_priceFeeds[_baseToken]
+            s_tokenDatas[_baseToken].priceFeed
         );
         PythStructs.Price memory currentQuotePrice = i_pyth.getPrice(
-            s_priceFeeds[_quoteToken]
+            s_tokenDatas[_quoteToken].priceFeed
         );
 
         uint256 basePrice = PythUtils.convertToUint(
@@ -133,17 +153,23 @@ contract SuperxOracle {
         if (!_notLargerThanPercent(_quoteToken, quoteSize))
             revert AmountOutOfBounds();
 
-        // TODO: check for native token
         if (_baseToken != address(0))
             IERC20(_baseToken).transferFrom(msg.sender, address(this), _amount);
 
+        bool success;
+
         if (_outputType != TokenType.native && _quoteToken != address(0)) {
-            IERC20(_quoteToken).transfer(msg.sender, quoteSize);
+            success = IERC20(_quoteToken).transfer(msg.sender, quoteSize);
         } else {
-            (bool success, ) = payable(msg.sender).call{value: quoteSize}("");
+            (success, ) = payable(msg.sender).call{value: quoteSize}("");
         }
 
-        //TODO: Emit a message when successfully transfer
+        TokenData memory _from = s_tokenDatas[_baseToken];
+        TokenData memory _to = s_tokenDatas[_quoteToken];
+
+        if (success) {
+            emit TokenSwapped(_from.symbol, _to.symbol, _amount);
+        }
     }
 
     /// @notice This function checks if the amount of token to be swapped is <= the s_qoutePercent * the contract balance
