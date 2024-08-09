@@ -10,7 +10,7 @@ import "@pythnetwork/pyth-sdk-solidity/PythUtils.sol";
 
 /// @title SuperxOracle Contract
 /// @author Favour Aniogor (@SuperDevFavour).
-/// @notice This contract acts as a simple AMM that holds the pool for Tokens available in the SuperxApp
+/// @notice This contract acts as a simple AMM that holds the pool for Tokens available in the SuperxApp. It's main function is help swap tokens that are not supported in CCIP to tokens that are supported.
 /// @dev This contracts implements Pyth PriceFeeds
 contract SuperxOracle is OwnerIsCreator, ReentrancyGuard {
     /////////////
