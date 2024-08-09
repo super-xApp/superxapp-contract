@@ -373,6 +373,17 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
     {
         _ccipReceive(_message); // process the message
     }
+
+    /// @notice for setting the token address
+    /// @param _tokenSymbol the symbol of the token
+    /// @param _tokenAddress the Address of the token
+    function setAssetToken(
+        string calldata _tokenSymbol,
+        address _tokenAddress
+    ) external onlyOwner {
+        assetAddress[_tokenSymbol] = _tokenAddress;
+    }
+
     receive() external payable {}
 
     ////////////////
