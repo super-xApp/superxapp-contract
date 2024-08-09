@@ -117,6 +117,7 @@ contract SuperxOracle is OwnerIsCreator, ReentrancyGuard {
         payable
         onlySwappableToken(_baseToken, _quoteToken)
         nonReentrant
+        returns (bool, uint256)
     {
         if (_baseToken == address(1) && _amount > msg.value) {
             revert NotEnoughBalance(msg.value);
@@ -165,6 +166,7 @@ contract SuperxOracle is OwnerIsCreator, ReentrancyGuard {
 
         if (success) {
             emit TokenSwapped(_from.symbol, _to.symbol, _amount);
+            return (success, quoteSize);
         }
     }
 

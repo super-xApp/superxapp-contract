@@ -7,8 +7,10 @@ import {OwnerIsCreator} from "@chainlink/contracts-ccip/src/v0.8/shared/access/O
 import {CCIPReceiver} from "@chainlink/contracts-ccip/src/v0.8/ccip/applications/CCIPReceiver.sol";
 import {Client} from "@chainlink/contracts-ccip/src/v0.8/ccip/libraries/Client.sol";
 import {IRouterClient} from "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IRouterClient.sol";
+import {IWrappedNative} from "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IWrappedNative.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {EnumerableMap} from "@chainlink/contracts-ccip/src/v0.8/vendor/openzeppelin-solidity/v4.8.3/contracts/utils/structs/EnumerableMap.sol";
+import {SuperxOracle} from "./SuperxOracle.sol";
 
 /// @title SuperxApp Contract
 /// @author Favour Aniogor (@SuperDevFavour).
@@ -28,12 +30,18 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
         LINK
     }
 
-    // Example error code, could have many different error codes.
+    // For ERROR CODE
     enum ErrorCode {
-        // RESOLVED is first so that the default value is resolved.
         RESOLVED,
-        // Could have any number of error codes here.
         FAILED
+    }
+
+    // To Know the type of token the user is sending
+    enum TokenType {
+        SUPPORTED,
+        NOTSUPPORTED,
+        WRAPPED,
+        NATIVE
     }
 
     /////////////
@@ -58,7 +66,14 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
     ////////////////////
 
     // Interface for the LINK token contract
-    IERC20 internal immutable i_linkToken;
+    IERC20 public immutable i_linkToken;
+
+    /// @notice The wrapped native token address.
+    /// @dev If the wrapped native token address changes on the router, this contract will need to be redeployed.
+    IWrappedNative public immutable i_weth;
+
+    /// Oracle contract address
+    address payable public immutable i_oracle;
 
     // storing the current chain ChainSelector
     uint64 private immutable i_currentChainSelector;
@@ -71,6 +86,12 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
 
     // Mapping to keep track of allowlisted senders.
     mapping(address => bool) public allowlistedSenders;
+
+    // Mapping to keep track of all supportedChains
+    mapping(uint64 => bool) public supportedChain;
+
+    // Mapping asset symbols to address
+    mapping(string => address) public assetAddress;
 
     // The message contents of failed messages are stored here.
     mapping(bytes32 messageId => Client.Any2EVMMessage contents)
@@ -118,11 +139,21 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
     constructor(
         address _router,
         address _link,
-        uint64 _chainSelector
+        uint64 _chainSelector,
+        uint64[] memory _supportedChain,
+        address _oracle
     ) CCIPReceiver(_router) {
         if (_router == address(0)) revert InvalidRouter(_router);
         i_linkToken = IERC20(_link);
         i_currentChainSelector = _chainSelector;
+        i_weth = IWrappedNative(CCIPRouter(_router).getWrappedNative());
+        i_weth.approve(_router, type(uint256).max);
+        i_oracle = payable(_oracle);
+        i_weth.approve(_oracle, type(uint256).max);
+
+        for (uint8 i; i < _supportedChain.length; i++) {
+            supportedChain[_supportedChain[i]] = true;
+        }
     }
 
     ////////////////
@@ -212,7 +243,10 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
         address _to,
         address _token,
         uint256 _amount,
-        PayFeesIn _payFeesIn
+        TokenType _tokenType,
+        PayFeesIn _payFeesIn,
+        string calldata _descSymbol,
+        bytes[] calldata _pythUpdateData
     )
         external
         payable
@@ -220,18 +254,43 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
         validateReceiver(_receiver)
         returns (bytes32 messageId)
     {
+        if (_tokenType == TokenType.NATIVE) {
+            i_weth.deposit{value: _amount}();
+        }
+
+        if (_tokenType == TokenType.NOTSUPPORTED) {
+            IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
+            (bool success, uint256 swapAmount) = SuperxOracle(i_oracle).swap(
+                _token,
+                address(i_linkToken),
+                _amount,
+                _pythUpdateData
+            );
+            _token = address(i_linkToken);
+            _amount = swapAmount;
+        }
+
+        if (_tokenType == TokenType.SUPPORTED) {
+            IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
+        }
+
         Client.EVM2AnyMessage memory message = _buildCCIPMessage(
             _receiver,
             msg.sender,
             _to,
             _token,
             _amount,
+            _tokenType,
+            _descSymbol,
+            _pythUpdateData,
             _payFeesIn == PayFeesIn.LINK ? address(i_linkToken) : address(0)
         );
 
         IRouterClient router = IRouterClient(this.getRouter());
 
         uint256 fees = router.getFee(_destinationChainSelector, message);
+
+        IERC20(_token).approve(address(router), _amount);
 
         if (_payFeesIn == PayFeesIn.LINK) {
             if (fees > i_linkToken.balanceOf(address(this)))
@@ -242,16 +301,12 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
 
             i_linkToken.approve(address(router), fees);
 
-            IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
-            IERC20(_token).approve(address(router), _amount);
+            i_linkToken.safeTransferFrom(msg.sender, address(this), _amount);
 
             messageId = router.ccipSend(_destinationChainSelector, message);
         } else {
             if (fees > address(this).balance)
                 revert NotEnoughBalanceForFees(address(this).balance, fees);
-
-            IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
-            IERC20(_token).approve(address(router), _amount);
 
             messageId = router.ccipSend{value: fees}(
                 _destinationChainSelector,
@@ -340,14 +395,65 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
     {
         bytes32 messageId = _message.messageId;
         uint64 sourceChainSelector = _message.sourceChainSelector;
-        (address to, address from) = abi.decode(
-            _message.data,
-            (address, address)
-        );
+        (
+            address to,
+            address from,
+            TokenType tokenType,
+            string memory descSymbol,
+            bytes[] memory pythUpdateData
+        ) = abi.decode(
+                _message.data,
+                (address, address, TokenType, string, bytes[])
+            );
         address token = _message.destTokenAmounts[0].token;
         uint256 tokenAmount = _message.destTokenAmounts[0].amount;
 
-        IERC20(token).safeTransfer(to, tokenAmount);
+        address destAddress = assetAddress[descSymbol];
+
+        if (
+            (TokenType.NATIVE == tokenType || TokenType.WRAPPED == tokenType) &&
+            destAddress == address(1)
+        ) {
+            i_weth.withdraw(tokenAmount);
+            (bool success, ) = payable(to).call{value: tokenAmount}("");
+            if (!success) {
+                i_weth.deposit{value: tokenAmount}();
+                i_weth.transfer(to, tokenAmount);
+            }
+        }
+
+        if (
+            (TokenType.SUPPORTED == tokenType ||
+                TokenType.NOTSUPPORTED == tokenType) &&
+            destAddress == address(1)
+        ) {
+            (bool success, uint256 swapAmount) = SuperxOracle(i_oracle).swap(
+                token,
+                destAddress,
+                tokenAmount,
+                pythUpdateData
+            );
+            (bool _success, ) = payable(to).call{value: tokenAmount}("");
+            if (!_success) {
+                i_weth.deposit{value: tokenAmount}();
+                i_weth.transfer(to, tokenAmount);
+            }
+        }
+
+        if (
+            (TokenType.SUPPORTED == tokenType ||
+                TokenType.NOTSUPPORTED == tokenType) && destAddress != token
+        ) {
+            (bool success, uint256 swapAmount) = SuperxOracle(i_oracle).swap(
+                token,
+                destAddress,
+                tokenAmount,
+                pythUpdateData
+            );
+            IERC20(destAddress).transfer(to, tokenAmount);
+        } else {
+            IERC20(token).transfer(to, tokenAmount);
+        }
 
         emit TokenReceived(
             messageId,
@@ -378,6 +484,9 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
         address _to,
         address _token,
         uint256 _amount,
+        TokenType _tokenType,
+        string calldata _descSymbol,
+        bytes[] calldata _pythUpdateData,
         address _feeTokenAddress
     ) private pure returns (Client.EVM2AnyMessage memory) {
         Client.EVMTokenAmount[]
@@ -390,7 +499,13 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
         return
             Client.EVM2AnyMessage({
                 receiver: abi.encode(_receiver),
-                data: abi.encode(_to, _from),
+                data: abi.encode(
+                    _to,
+                    _from,
+                    _tokenType,
+                    _descSymbol,
+                    _pythUpdateData
+                ),
                 tokenAmounts: tokenAmounts,
                 extraArgs: Client._argsToBytes(
                     Client.EVMExtraArgsV1({gasLimit: 300_000})
@@ -398,4 +513,8 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
                 feeToken: _feeTokenAddress
             });
     }
+}
+
+interface CCIPRouter {
+    function getWrappedNative() external view returns (address);
 }
