@@ -2,12 +2,8 @@
 pragma solidity ^0.8.19;
 
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {OwnerIsCreator} from "@chainlink/contracts-ccip/src/v0.8/shared/access/OwnerIsCreator.sol";
-import {Client} from "@chainlink/contracts-ccip/src/v0.8/ccip/libraries/Client.sol";
-import {IRouterClient} from "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IRouterClient.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {EnumerableMap} from "@chainlink/contracts-ccip/src/v0.8/vendor/openzeppelin-solidity/v4.8.3/contracts/utils/structs/EnumerableMap.sol";
 import "@pythnetwork/pyth-sdk-solidity/IPyth.sol";
 import "@pythnetwork/pyth-sdk-solidity/PythStructs.sol";
 import "@pythnetwork/pyth-sdk-solidity/PythUtils.sol";
@@ -115,6 +111,12 @@ contract SuperxOracle {
     // Externals //
     //////////////
 
+    /// @notice swap carries out the swapping functionality using pyth pricefeed
+    /// @param _baseToken the address of the token you to swap from.
+    /// @param _quoteToken the address of the token you to swap to.
+    /// @param _amount the amount you want to swap.
+    /// @param _outputType the type of token you are swapping to.
+    /// @param _pythUpdateData the data gotten from the frontend to update the pricefeed.
     function swap(
         address _baseToken,
         address _quoteToken,
@@ -171,6 +173,12 @@ contract SuperxOracle {
             emit TokenSwapped(_from.symbol, _to.symbol, _amount);
         }
     }
+
+    receive() external payable {}
+
+    ////////////////
+    // Internals //
+    //////////////
 
     /// @notice This function checks if the amount of token to be swapped is <= the s_qoutePercent * the contract balance
     /// @param _token the address of the token the contract is sending.
