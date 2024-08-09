@@ -23,6 +23,16 @@ contract SuperxOracle {
     error PriceFeedAndTokensLengthNotEqual();
     error TokenNotSwappable(address _baseToken, address _quoteToken);
     error AmountOutOfBounds();
+    error NotEnoughBalance(uint256 _value);
+
+    ////////////
+    // ENUMs //
+    //////////
+
+    enum TokenType {
+        others,
+        native
+    }
 
     //////////////////////
     // State Variables //
@@ -89,8 +99,13 @@ contract SuperxOracle {
         address _baseToken,
         address _quoteToken,
         uint256 _amount,
+        TokenType _outputType,
         bytes[] calldata _pythUpdateData
     ) external payable onlySwappableToken(_baseToken, _quoteToken) {
+        if (_baseToken == address(0) && _amount > msg.value) {
+            revert NotEnoughBalance(msg.value);
+        }
+
         uint256 updateFee = i_pyth.getUpdateFee(_pythUpdateData);
         i_pyth.updatePriceFeeds{value: updateFee}(_pythUpdateData);
 
@@ -117,10 +132,16 @@ contract SuperxOracle {
 
         if (!_notLargerThanPercent(_quoteToken, quoteSize))
             revert AmountOutOfBounds();
-        // TODO: check for native token
 
-        IERC20(_baseToken).transferFrom(msg.sender, address(this), _amount);
-        IERC20(_quoteToken).transfer(msg.sender, quoteSize);
+        // TODO: check for native token
+        if (_baseToken != address(0))
+            IERC20(_baseToken).transferFrom(msg.sender, address(this), _amount);
+
+        if (_outputType != TokenType.native && _quoteToken != address(0)) {
+            IERC20(_quoteToken).transfer(msg.sender, quoteSize);
+        } else {
+            (bool success, ) = payable(msg.sender).call{value: quoteSize}("");
+        }
 
         //TODO: Emit a message when successfully transfer
     }
