@@ -7,6 +7,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import "@pythnetwork/pyth-sdk-solidity/IPyth.sol";
 import "@pythnetwork/pyth-sdk-solidity/PythStructs.sol";
 import "@pythnetwork/pyth-sdk-solidity/PythUtils.sol";
+import {IWrappedNative} from "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IWrappedNative.sol";
 
 /// @title SuperxOracle Contract
 /// @author Favour Aniogor (@SuperDevFavour).
@@ -191,6 +192,12 @@ contract SuperxOracle is OwnerIsCreator, ReentrancyGuard {
     /// @param _percent the new percent
     function setQuotePercent(uint8 _percent) external onlyOwner {
         s_quotePercent = _percent;
+    }
+
+    /// @notice Use to deposit weth in the contract
+    /// @param _token address of the token.
+    function depositWeth(address _token) external payable {
+        IWrappedNative(_token).deposit{value: msg.value}();
     }
 
     /// @notice This withdraws all the token to the owner.

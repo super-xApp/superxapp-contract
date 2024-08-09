@@ -258,6 +258,10 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
             i_weth.deposit{value: _amount}();
         }
 
+        if (_tokenType == TokenType.WRAPPED) {
+            i_weth.transferFrom(msg.sender, address(this), _amount);
+        }
+
         if (_tokenType == TokenType.NOTSUPPORTED) {
             IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
             (bool success, uint256 swapAmount) = SuperxOracle(i_oracle).swap(
@@ -290,7 +294,10 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
 
         uint256 fees = router.getFee(_destinationChainSelector, message);
 
-        IERC20(_token).approve(address(router), _amount);
+        if (
+            _tokenType == TokenType.SUPPORTED ||
+            _tokenType == TokenType.NOTSUPPORTED
+        ) IERC20(_token).approve(address(router), _amount);
 
         if (_payFeesIn == PayFeesIn.LINK) {
             if (fees > i_linkToken.balanceOf(address(this)))
