@@ -12,7 +12,7 @@ import "@pythnetwork/pyth-sdk-solidity/PythUtils.sol";
 /// @author Favour Aniogor (@SuperDevFavour).
 /// @notice This contract acts as a simple AMM that holds the pool for Tokens available in the SuperxApp
 /// @dev This contracts implements Pyth PriceFeeds
-contract SuperxOracle {
+contract SuperxOracle is OwnerIsCreator, ReentrancyGuard {
     /////////////
     // ERRORs //
     ///////////
@@ -20,15 +20,6 @@ contract SuperxOracle {
     error TokenNotSwappable(address _baseToken, address _quoteToken);
     error AmountOutOfBounds();
     error NotEnoughBalance(uint256 _value);
-
-    ////////////
-    // ENUMs //
-    //////////
-
-    enum TokenType {
-        others,
-        native
-    }
 
     //////////////////////
     // State Variables //
@@ -115,16 +106,19 @@ contract SuperxOracle {
     /// @param _baseToken the address of the token you to swap from.
     /// @param _quoteToken the address of the token you to swap to.
     /// @param _amount the amount you want to swap.
-    /// @param _outputType the type of token you are swapping to.
     /// @param _pythUpdateData the data gotten from the frontend to update the pricefeed.
     function swap(
         address _baseToken,
         address _quoteToken,
         uint256 _amount,
-        TokenType _outputType,
         bytes[] calldata _pythUpdateData
-    ) external payable onlySwappableToken(_baseToken, _quoteToken) {
-        if (_baseToken == address(0) && _amount > msg.value) {
+    )
+        external
+        payable
+        onlySwappableToken(_baseToken, _quoteToken)
+        nonReentrant
+    {
+        if (_baseToken == address(1) && _amount > msg.value) {
             revert NotEnoughBalance(msg.value);
         }
 
@@ -155,12 +149,12 @@ contract SuperxOracle {
         if (!_notLargerThanPercent(_quoteToken, quoteSize))
             revert AmountOutOfBounds();
 
-        if (_baseToken != address(0))
+        if (_baseToken != address(1))
             IERC20(_baseToken).transferFrom(msg.sender, address(this), _amount);
 
         bool success;
 
-        if (_outputType != TokenType.native && _quoteToken != address(0)) {
+        if (_quoteToken != address(1)) {
             success = IERC20(_quoteToken).transfer(msg.sender, quoteSize);
         } else {
             (success, ) = payable(msg.sender).call{value: quoteSize}("");
@@ -172,6 +166,13 @@ contract SuperxOracle {
         if (success) {
             emit TokenSwapped(_from.symbol, _to.symbol, _amount);
         }
+    }
+
+    /// @notice Use to set the swappable state of a token
+    /// @param _token address of the token.
+    /// @param _state the state of the token
+    function setIswappable(address _token, bool _state) external onlyOwner {
+        s_isSwappable[_token] = _state;
     }
 
     receive() external payable {}
@@ -187,8 +188,9 @@ contract SuperxOracle {
         address _token,
         uint256 _amount
     ) internal view returns (bool) {
-        uint256 percentAmount = s_quotePercent *
-            (IERC20(_token).balanceOf(address(this)) / 100);
+        uint256 percentAmount = _token == address(1)
+            ? ((s_quotePercent * address(this).balance) / 100)
+            : s_quotePercent * (IERC20(_token).balanceOf(address(this)) / 100);
         if (_amount > percentAmount) {
             return false;
         }
