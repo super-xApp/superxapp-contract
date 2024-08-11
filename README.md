@@ -59,3 +59,25 @@ The architecture of SuperxApp is built on a modular, scalable framework that pri
 SuperxApp has been deployed on multiple testnets, including Arbitrum Sepolia, Sepolia, Optimism Sepolia, Base Sepolia, and Celo Afejore. We used Blockscout to verify the contracts, ensuring transparency and trust in our deployment process.
 
 The deployment process involved rigorous testing and iteration to ensure that the contracts were fully compatible with each network's unique requirements. By verifying the contracts on Blockscout, we provide users with the assurance that our code is secure and trustworthy.
+
+#### PS
+##### *Due to unforeseen frontend issues, you can interact with the protocol contract directly on Blockscout using the provided addresses.*
+
+
+
+Here's the updated table with the correct links:
+
+| **Contract/Networks** | **Sepolia**                                                                                          | **Arbitrum Sepolia**                                                                 | **BASE Sepolia**                                                                 | **OPTIMISM Sepolia**                                                              |
+| --------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| **SuperxOracle**      | [0x6364eC95659863D87b1150c7B6342C1A5D185273](https://eth-sepolia.blockscout.com/address/0x6364eC95659863D87b1150c7B6342C1A5D185273)    | [0x6A1831C9E48cd407dB1c7e9AaC6ae79C16d3462F](https://sepolia-explorer.arbitrum.io/address/0x6A1831C9E48cd407dB1c7e9AaC6ae79C16d3462F) | [0x13CfEA2CcC182C55Ee4A7954e23f8207F093eee9](https://base-sepolia.blockscout.com/address/0x13CfEA2CcC182C55Ee4A7954e23f8207F093eee9) | [0x5c55DfB5f4eB4cE81b5416A071d96248c0E35aBa](https://optimism-sepolia.blockscout.com/address/0x5c55DfB5f4eB4cE81b5416A071d96248c0E35aBa) |
+| **SuperxApp**         | [0x0d36DD97b829069b48F97190DA264b87C3558e3b](https://eth-sepolia.blockscout.com/address/0x0d36DD97b829069b48F97190DA264b87C3558e3b)    | [0x13CfEA2CcC182C55Ee4A7954e23f8207F093eee9](https://sepolia-explorer.arbitrum.io/address/0x13CfEA2CcC182C55Ee4A7954e23f8207F093eee9) | [0xbb3D975B2F00Be37CBCBC5917649Fe7f9E30fFA3](https://base-sepolia.blockscout.com/address/0xbb3D975B2F00Be37CBCBC5917649Fe7f9E30fFA3) | [0x002D3C87e568C8b8387378c7ca11bB4DdDb2A554](https://optimism-sepolia.blockscout.com/address/0x002D3C87e568C8b8387378c7ca11bB4DdDb2A554) |
+
+### Acknowledgement
+* Pyth network
+* ChainLink CCIP
+* Arbitrum
+* Optimism
+
+### HACKERS
+* super-Xapp
+
