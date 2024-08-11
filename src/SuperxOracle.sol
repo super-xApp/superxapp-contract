@@ -127,10 +127,10 @@ contract SuperxOracle is OwnerIsCreator, ReentrancyGuard {
         uint256 updateFee = i_pyth.getUpdateFee(_pythUpdateData);
         i_pyth.updatePriceFeeds{value: updateFee}(_pythUpdateData);
 
-        PythStructs.Price memory currentBasePrice = i_pyth.getPrice(
+        PythStructs.Price memory currentBasePrice = i_pyth.getPriceUnsafe(
             s_tokenDatas[_baseToken].priceFeed
         );
-        PythStructs.Price memory currentQuotePrice = i_pyth.getPrice(
+        PythStructs.Price memory currentQuotePrice = i_pyth.getPriceUnsafe(
             s_tokenDatas[_quoteToken].priceFeed
         );
 

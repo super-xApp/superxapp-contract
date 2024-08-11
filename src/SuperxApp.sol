@@ -68,12 +68,15 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
     // Interface for the LINK token contract
     IERC20 public immutable i_linkToken;
 
+    // Interface for the LINK token contract
+    IERC20 public immutable i_usdcToken;
+
     /// @notice The wrapped native token address.
     /// @dev If the wrapped native token address changes on the router, this contract will need to be redeployed.
     IWrappedNative public immutable i_weth;
 
     /// Oracle contract address
-    address payable public immutable i_oracle;
+    address payable private i_oracle;
 
     // storing the current chain ChainSelector
     uint64 private immutable i_currentChainSelector;
@@ -139,12 +142,14 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
     constructor(
         address _router,
         address _link,
+        address _usdc,
         uint64 _chainSelector,
         uint64[] memory _supportedChain,
         address _oracle
     ) CCIPReceiver(_router) {
         if (_router == address(0)) revert InvalidRouter(_router);
         i_linkToken = IERC20(_link);
+        i_usdcToken = IERC20(_usdc);
         i_currentChainSelector = _chainSelector;
         i_weth = IWrappedNative(CCIPRouter(_router).getWrappedNative());
         i_weth.approve(_router, type(uint256).max);
@@ -254,6 +259,8 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
         validateReceiver(_receiver)
         returns (bytes32 messageId)
     {
+        address fromToken = _token;
+
         if (_tokenType == TokenType.NATIVE) {
             i_weth.deposit{value: _amount}();
         }
@@ -264,13 +271,14 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
 
         if (_tokenType == TokenType.NOTSUPPORTED) {
             IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
+            IERC20(_token).approve(address(i_oracle), _amount);
             (bool success, uint256 swapAmount) = SuperxOracle(i_oracle).swap(
                 _token,
-                address(i_linkToken),
+                address(i_usdcToken),
                 _amount,
                 _pythUpdateData
             );
-            _token = address(i_linkToken);
+            _token = address(i_usdcToken);
             _amount = swapAmount;
         }
 
@@ -300,7 +308,7 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
         ) IERC20(_token).approve(address(router), _amount);
 
         if (_payFeesIn == PayFeesIn.LINK) {
-            if (fees > i_linkToken.balanceOf(address(this)))
+            if (fees > i_linkToken.balanceOf(msg.sender))
                 revert NotEnoughBalanceForFees(
                     i_linkToken.balanceOf(address(this)),
                     fees
@@ -308,7 +316,7 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
 
             i_linkToken.approve(address(router), fees);
 
-            i_linkToken.safeTransferFrom(msg.sender, address(this), _amount);
+            i_linkToken.safeTransferFrom(msg.sender, address(this), fees);
 
             messageId = router.ccipSend(_destinationChainSelector, message);
         } else {
@@ -326,7 +334,7 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
             _destinationChainSelector,
             msg.sender,
             _to,
-            _token,
+            fromToken,
             _amount,
             _payFeesIn == PayFeesIn.LINK ? address(i_linkToken) : address(0),
             fees
@@ -391,6 +399,12 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
         assetAddress[_tokenSymbol] = _tokenAddress;
     }
 
+    /// @notice to change oracle address
+    /// @param _oracle address of the oracle.
+    function changeOracle(address _oracle) external onlyOwner {
+        i_oracle = payable(_oracle);
+    }
+
     receive() external payable {}
 
     ////////////////
@@ -445,6 +459,7 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
                 TokenType.NOTSUPPORTED == tokenType) &&
             destAddress == address(1)
         ) {
+            IERC20(token).approve(address(i_oracle), tokenAmount);
             (bool success, uint256 swapAmount) = SuperxOracle(i_oracle).swap(
                 token,
                 destAddress,
@@ -462,6 +477,7 @@ contract SuperxApp is OwnerIsCreator, CCIPReceiver, ReentrancyGuard {
             (TokenType.SUPPORTED == tokenType ||
                 TokenType.NOTSUPPORTED == tokenType) && destAddress != token
         ) {
+            IERC20(token).approve(address(i_oracle), tokenAmount);
             (bool success, uint256 swapAmount) = SuperxOracle(i_oracle).swap(
                 token,
                 destAddress,

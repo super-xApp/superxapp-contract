@@ -64,3 +64,9 @@ $ forge --help
 $ anvil --help
 $ cast --help
 ```
+## Deployed Addresses 
+
+| **Contract\Networks** | **Sepolia**                                    | **Arbitrum Sepolia**                           | **BASE SEPOLIA**                               | **OPTIMISM SEPOLIA**                           |
+| --------------------- | ---------------------------------------------- | ---------------------------------------------- | ---------------------------------------------- | ---------------------------------------------- |
+| _SuperxOracle_        | _`0x6364eC95659863D87b1150c7B6342C1A5D185273`_ | _`0x6A1831C9E48cd407dB1c7e9AaC6ae79C16d3462F`_ | _`0x13CfEA2CcC182C55Ee4A7954e23f8207F093eee9`_ | _`0x5c55DfB5f4eB4cE81b5416A071d96248c0E35aBa`_ |
+| _SuperxApp_           | _`0x0d36DD97b829069b48F97190DA264b87C3558e3b`_ | _`0x13CfEA2CcC182C55Ee4A7954e23f8207F093eee9`_ | _`0xbb3D975B2F00Be37CBCBC5917649Fe7f9E30fFA3`_ | _`0x002D3C87e568C8b8387378c7ca11bB4DdDb2A554`_ |
